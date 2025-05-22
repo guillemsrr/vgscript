@@ -1,0 +1,361 @@
+﻿/**
+ * Adds a custom menu to the Google Document.
+ */
+function onOpen() {
+  DocumentApp.getUi()
+    .createMenu("Stylize script")
+    .addItem("Full doc", "applyStyles")
+    .addItem("Selection", "applyStylesToSelection")
+    .addItem("Scenes", "applyScenesStyle")
+    .addToUi();
+}
+
+function applyStyles() {
+  const targetDocId = "10vMCr6dbVkKiXv6Qkz9b1GSb8russzLJ8L5tYJpiZFk";
+  let doc = DocumentApp.openById(targetDocId)
+  //let doc = DocumentApp.getActiveDocument();
+  let ui = DocumentApp.getUi();
+  if(!doc)
+  {
+    ui.alert("null doc");
+    return;
+  }
+  let body = doc.getBody();
+  let paragraphs = body.getParagraphs();
+
+  if(!paragraphs)
+  {
+    ui.alert("No paragraphs");
+    return;
+  }
+
+  //ui.alert("Applying style");
+
+  let numberOfParagraphs = paragraphs.length;
+  doc.saveAndClose();
+
+  let division = Math.floor(numberOfParagraphs / 7);
+  let paragraphIndex = 0;
+
+  while (paragraphIndex < numberOfParagraphs) {
+    doc = DocumentApp.openById(targetDocId);
+    body = doc.getBody();
+    paragraphs = body.getParagraphs();
+    let paragraphTarget = paragraphIndex + division;
+
+    while (paragraphIndex < paragraphTarget && paragraphIndex < numberOfParagraphs) {
+      processParagraph(paragraphs[paragraphIndex]);
+      paragraphIndex++;
+    }
+    doc.saveAndClose();
+  }
+  //ui.alert("Style applied.");
+}
+
+function applyScenesStyle(){
+    const targetDocId = "10vMCr6dbVkKiXv6Qkz9b1GSb8russzLJ8L5tYJpiZFk";
+  let doc = DocumentApp.openById(targetDocId);
+  let paragraphs = doc.getBody().getParagraphs();
+
+  paragraphs.forEach(function(paragraph) {
+    if (paragraph.getText().includes("[S")) {
+      paragraph.setHeading(DocumentApp.ParagraphHeading.HEADING1);
+      paragraph.setAttributes(styles.scene);
+    }
+  });
+  
+  doc.saveAndClose();
+}
+
+
+/**
+ * Processes a single paragraph element.
+ * Determines the base style and applies sub‑styles.
+ */
+function processParagraph(paragraph) {
+  var text = paragraph.getText();
+  var isParagraph = paragraph.getType() === DocumentApp.ElementType.PARAGRAPH;
+  var lastStyle = styles.normal;
+  
+  // If the paragraph contains a scene marker, set it as a heading.
+  if (text.includes("[S") && isParagraph) {
+    paragraph.setHeading(DocumentApp.ParagraphHeading.HEADING1);
+  }
+  // If it starts with a sub‑action marker, use the previous style and apply "if" conditions.
+  else if (text.startsWith("{")) {
+    paragraph.setAttributes(lastStyle);
+    applySubStyle(paragraph, patterns.ifCondition, styles.condition);
+    applySubStyle(paragraph, patterns.ifNotCondition, styles.condition);
+  }
+  
+  // Determine and apply the base style.
+  var baseStyle = getBaseStyle(text);
+  paragraph.setAttributes(baseStyle);
+  lastStyle = baseStyle;
+  
+  // Apply regex-based sub‑styles.
+  applySubstyles(paragraph);
+}
+
+function startChunkedProcessing() {
+  const targetDocId = "10vMCr6dbVkKiXv6Qkz9b1GSb8russzLJ8L5tYJpiZFk";
+  let doc = DocumentApp.openById(targetDocId);
+  let body = doc.getBody();
+  let paragraphs = body.getParagraphs();
+  let totalParagraphs = paragraphs.length;
+  doc.saveAndClose();
+  
+  // Choose a chunk size (you can adjust this value)
+  let chunkSize = 50;
+  
+  // Save the starting index and chunk size in Script Properties
+  PropertiesService.getScriptProperties().setProperty("paragraphIndex", "0");
+  PropertiesService.getScriptProperties().setProperty("chunkSize", chunkSize.toString());
+  PropertiesService.getScriptProperties().setProperty("totalParagraphs", totalParagraphs.toString());
+  
+  // Kick off processing the first chunk
+  processChunk();
+}
+
+function processChunk() {
+  const targetDocId = "10vMCr6dbVkKiXv6Qkz9b1GSb8russzLJ8L5tYJpiZFk";
+  let props = PropertiesService.getScriptProperties();
+  let index = parseInt(props.getProperty("paragraphIndex"), 10);
+  let chunkSize = parseInt(props.getProperty("chunkSize"), 10);
+  let total = parseInt(props.getProperty("totalParagraphs"), 10);
+  
+  // Open the document once for this chunk
+  let doc = DocumentApp.openById(targetDocId);
+  let paragraphs = doc.getBody().getParagraphs();
+  
+  // Process the fixed chunk
+  let endIndex = Math.min(index + chunkSize, total);
+  for (let i = index; i < endIndex; i++) {
+    processParagraph(paragraphs[i]);
+  }
+  
+  // Update the stored paragraph index and save changes
+  index = endIndex;
+  props.setProperty("paragraphIndex", index.toString());
+  doc.saveAndClose();
+  
+  // If work remains, schedule the next chunk after a short delay
+  if (index < total) {
+    ScriptApp.newTrigger("processChunk")
+      .timeBased()
+      .after(1000)  // Delay in milliseconds (adjust if needed)
+      .create();
+  } else {
+    Logger.log("Processing complete: " + total + " paragraphs processed.");
+  }
+}
+
+/** 
+ * Predefined styles 
+ */
+const styles = {
+  scene: {
+    [DocumentApp.Attribute.FONT_FAMILY]: 'Economica',
+    [DocumentApp.Attribute.FONT_SIZE]: 24,
+    [DocumentApp.Attribute.BOLD]: true,
+    [DocumentApp.Attribute.FOREGROUND_COLOR]: '#000000'
+  },
+  character: {
+    [DocumentApp.Attribute.FONT_FAMILY]: 'Economica',
+    [DocumentApp.Attribute.FONT_SIZE]: 14,
+    [DocumentApp.Attribute.BOLD]: true,
+    [DocumentApp.Attribute.BACKGROUND_COLOR]: '#ffc22e',
+    [DocumentApp.Attribute.FOREGROUND_COLOR]: '#000000'
+  },
+  action: {
+    [DocumentApp.Attribute.FONT_FAMILY]: 'Play',
+    [DocumentApp.Attribute.FONT_SIZE]: 12,
+    [DocumentApp.Attribute.BOLD]: false,
+    [DocumentApp.Attribute.BACKGROUND_COLOR]: '#e9d1ff',
+    [DocumentApp.Attribute.FOREGROUND_COLOR]: '#000000'
+  },
+  darkAction: {
+    [DocumentApp.Attribute.FONT_FAMILY]: 'Play',
+    [DocumentApp.Attribute.FONT_SIZE]: 12,
+    [DocumentApp.Attribute.BOLD]: false,
+    [DocumentApp.Attribute.BACKGROUND_COLOR]: '#d5a7ff',
+    [DocumentApp.Attribute.FOREGROUND_COLOR]: '#000000'
+  },
+  subAction: {
+    [DocumentApp.Attribute.FONT_FAMILY]: 'Play',
+    [DocumentApp.Attribute.FONT_SIZE]: 11,
+    [DocumentApp.Attribute.BOLD]: false,
+    [DocumentApp.Attribute.BACKGROUND_COLOR]: '#ffd09e',
+    [DocumentApp.Attribute.FOREGROUND_COLOR]: '#000000'
+  },
+  subAction2: {
+    [DocumentApp.Attribute.FONT_FAMILY]: 'Play',
+    [DocumentApp.Attribute.FONT_SIZE]: 11,
+    [DocumentApp.Attribute.BOLD]: false,
+    [DocumentApp.Attribute.BACKGROUND_COLOR]: '#ffb4db',
+    [DocumentApp.Attribute.FOREGROUND_COLOR]: '#000000'
+  },
+  condition: {
+    [DocumentApp.Attribute.FONT_FAMILY]: 'Play',
+    [DocumentApp.Attribute.FONT_SIZE]: 12,
+    [DocumentApp.Attribute.BOLD]: false,
+    [DocumentApp.Attribute.BACKGROUND_COLOR]: '#ffc4c5',
+    [DocumentApp.Attribute.FOREGROUND_COLOR]: '#000000'
+  },
+  darkCondition: {
+    [DocumentApp.Attribute.FONT_FAMILY]: 'Play',
+    [DocumentApp.Attribute.FONT_SIZE]: 12,
+    [DocumentApp.Attribute.BOLD]: false,
+    [DocumentApp.Attribute.BACKGROUND_COLOR]: '#fc9597',
+    [DocumentApp.Attribute.FOREGROUND_COLOR]: '#000000'
+  },
+  decision: {
+    [DocumentApp.Attribute.FONT_FAMILY]: 'Economica',
+    [DocumentApp.Attribute.FONT_SIZE]: 14,
+    [DocumentApp.Attribute.BOLD]: false,
+    [DocumentApp.Attribute.BACKGROUND_COLOR]: '#d6fbff',
+    [DocumentApp.Attribute.FOREGROUND_COLOR]: '#000000'
+  },
+  darkDecision: {
+    [DocumentApp.Attribute.FONT_FAMILY]: 'Economica',
+    [DocumentApp.Attribute.FONT_SIZE]: 14,
+    [DocumentApp.Attribute.BOLD]: false,
+    [DocumentApp.Attribute.BACKGROUND_COLOR]: '#8de6f0',
+    [DocumentApp.Attribute.FOREGROUND_COLOR]: '#000000'
+  },
+  talk: {
+    [DocumentApp.Attribute.FONT_FAMILY]: 'Economica',
+    [DocumentApp.Attribute.FONT_SIZE]: 14,
+    [DocumentApp.Attribute.BOLD]: false,
+    [DocumentApp.Attribute.BACKGROUND_COLOR]: '#fff0cc',
+    [DocumentApp.Attribute.FOREGROUND_COLOR]: '#000000'
+  },
+  darkTalk: {
+    [DocumentApp.Attribute.FONT_FAMILY]: 'Economica',
+    [DocumentApp.Attribute.FONT_SIZE]: 14,
+    [DocumentApp.Attribute.BOLD]: false,
+    [DocumentApp.Attribute.BACKGROUND_COLOR]: '#fade9b',
+    [DocumentApp.Attribute.FOREGROUND_COLOR]: '#000000'
+  },
+  differentSceneAction: {
+    [DocumentApp.Attribute.FONT_FAMILY]: 'Economica',
+    [DocumentApp.Attribute.FONT_SIZE]: 14,
+    [DocumentApp.Attribute.BOLD]: false,
+    [DocumentApp.Attribute.BACKGROUND_COLOR]: '#f2f249',
+    [DocumentApp.Attribute.FOREGROUND_COLOR]: '#000000'
+  },
+  alert: {
+    [DocumentApp.Attribute.FONT_FAMILY]: 'Arial',
+    [DocumentApp.Attribute.FOREGROUND_COLOR]: '#fa4848',
+    [DocumentApp.Attribute.FONT_SIZE]: 11,
+    [DocumentApp.Attribute.BOLD]: false,
+    [DocumentApp.Attribute.BACKGROUND_COLOR]: '#ffffff'
+  },
+  normal: {
+    [DocumentApp.Attribute.FONT_FAMILY]: 'Arial',
+    [DocumentApp.Attribute.FOREGROUND_COLOR]: '#787878',
+    [DocumentApp.Attribute.FONT_SIZE]: 11,
+    [DocumentApp.Attribute.BOLD]: false,
+    [DocumentApp.Attribute.BACKGROUND_COLOR]: '#ffffff'
+  },
+  todo: {
+    [DocumentApp.Attribute.FONT_FAMILY]: 'Impact',
+    [DocumentApp.Attribute.FONT_SIZE]: 18,
+    [DocumentApp.Attribute.BOLD]: false,
+    [DocumentApp.Attribute.FOREGROUND_COLOR]: '#ffffff',
+    [DocumentApp.Attribute.BACKGROUND_COLOR]: '#000000'
+  }
+};
+
+/**
+ * Precompiled regex patterns.
+ */
+const patterns = {
+  condition: /C\d+/g,
+  conditionCode: /\[C.*?\]/g,
+  ifCondition: /if\((.*?)\)/g,
+  ifNotCondition: /if!\((.*?)\)/g,
+  decision: /D\d+/g,
+  decisionCode: /\[D.*?\]/g,
+  action: /A\d+/g,
+  actionCode: /\[A.*?\]/g,
+  talk: /T\d+/g,
+  talkCode: /\[T.*?\]/g,
+  nextScene: /S\d+-[A-Z]\d+/g,
+  subActionPattern: /\{.*?\}/g,
+  subActionParenthesisPattern: /\(.*?\)/g,
+  commentPattern: /\/\/\((.*?)\)/g
+};
+
+/**
+ * Determines a base style based on the text content.
+ */
+function getBaseStyle(text) {
+  if (text.includes("[S")) return styles.scene;
+  if (text.includes("TODO")) return styles.todo;
+  if (text.includes("[A")) return styles.action;
+  if (text.includes("[T")) return styles.talk;
+  if (text.includes("[P")) return styles.character;
+  if (text.includes("[D")) return styles.decision;
+  if (text.includes("[C")) return styles.condition;
+  if (text.includes("[!]")) return styles.alert;
+  if (text.includes("{}")) return styles.subAction;
+  return styles.normal;
+}
+
+/**
+ * Applies various regex‑based sub‑styles to the given element.
+ */
+function applySubstyles(element) {
+  applySubStyle(element, patterns.ifCondition, styles.condition);
+  applySubStyle(element, patterns.ifNotCondition, styles.condition);
+  applySubStyle(element, patterns.subActionPattern, styles.subAction);
+  applySubStyle(element, patterns.subActionParenthesisPattern, styles.subAction2);
+  applySubStyle(element, patterns.action, styles.darkAction);
+  applySubStyle(element, patterns.actionCode, styles.darkAction);
+  applySubStyle(element, patterns.condition, styles.darkCondition);
+  applySubStyle(element, patterns.conditionCode, styles.darkCondition);
+  applySubStyle(element, patterns.decision, styles.darkDecision);
+  applySubStyle(element, patterns.decisionCode, styles.darkDecision);
+  applySubStyle(element, patterns.talk, styles.darkTalk);
+  applySubStyle(element, patterns.talkCode, styles.darkTalk);
+  applySubStyle(element, patterns.nextScene, styles.differentSceneAction);
+  applySubStyle(element, patterns.commentPattern, styles.normal);
+}
+
+/**
+ * Applies the given style to all parts of the element’s text that match the regex.
+ */
+function applySubStyle(element, pattern, style) {
+  var text = element.getText();
+  pattern.lastIndex = 0; // Reset regex index
+  var textElement = element.editAsText();
+  var match;
+  while ((match = pattern.exec(text)) !== null) {
+    var start = match.index;
+    var end = start + match[0].length - 1;
+    textElement.setAttributes(start, end, style);
+  }
+}
+
+/**
+ * Applies styles only to the selected text.
+ */
+function applyStylesToSelection()
+{
+  let doc = DocumentApp.getActiveDocument();
+  let selection = doc.getSelection();
+  if (!selection) {
+    DocumentApp.getUi().alert("No selection found");
+    return;
+  }
+
+    let rangeElements = selection.getRangeElements();
+
+  rangeElements.forEach((rangeElement) => {
+    let element = rangeElement.getElement();
+    if (element.getType() === DocumentApp.ElementType.PARAGRAPH) {
+      processParagraph(element.asParagraph());
+    }
+  });
+}
