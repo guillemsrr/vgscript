@@ -26,6 +26,11 @@
 
 void UVgScriptEditorUtilityWidget::UpdateCodeEnumerations()
 {
+	if (!VgScriptGUIDDataAsset)
+	{
+		return;
+	}
+
 	FString CurrentTime = FDateTime::Now().ToString();
 	FString Path = UKismetSystemLibrary::GetProjectDirectory() / ScriptPath / CurrentTime / TEXT("Backup.txt");
 	FString OriginalPath = UKismetSystemLibrary::GetProjectDirectory() / ScriptPath / TEXT("Soliloqui_Guió.txt");
@@ -235,7 +240,7 @@ TArray<FString> UVgScriptEditorUtilityWidget::GetLanguages()
 }
 
 FString UVgScriptEditorUtilityWidget::GetSuitableLanguage(const TArray<FString>& AvailableLanguages,
-                                                                  const FString& Code)
+                                                          const FString& Code)
 {
 	return UKismetInternationalizationLibrary::GetSuitableCulture(AvailableLanguages, Code, "none");
 }
